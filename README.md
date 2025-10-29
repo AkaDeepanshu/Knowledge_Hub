@@ -2,12 +2,7 @@
 
 A full-stack web application for managing articles with AI-powered summarization, user authentication, role-based access control, and version tracking.
 
-## � Documentation
-
-- **[Production Deployment Guide](./RENDER_DEPLOYMENT.md)** - Complete guide for deploying to Render with Docker
-- **[Environment Variables Setup](./RENDER_ENV_SETUP.md)** - Quick reference for Render configuration
-- **[Production Checklist](./PRODUCTION_CHECKLIST.md)** - Pre-deployment verification checklist
-- **[LLM Configuration](./LLM_CONFIGURATION.md)** - AI provider setup and switching guide
+LIVE DEMO: https://knowledge-hub-frontend-yhki.onrender.com/login
 
 ## �🚀 Features
 
