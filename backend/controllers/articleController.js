@@ -1,4 +1,5 @@
 const Article = require('../models/Article');
+const llmService = require('../services/llmService');
 
 // Create article
 const createArticle = async (req, res) => {
@@ -267,11 +268,140 @@ const getMyArticles = async (req, res) => {
   }
 };
 
+// Summarize article using LLM
+const summarizeArticle = async (req, res) => {
+  try {
+    const articleId = req.params.id;
+    const { provider, regenerate } = req.body;
+
+    // Find article
+    const article = await Article.findById(articleId);
+
+    if (!article) {
+      return res.status(404).json({
+        success: false,
+        message: 'Article not found.'
+      });
+    }
+
+    // Check if summary already exists and regenerate flag is not set
+    if (article.summary && !regenerate) {
+      return res.status(200).json({
+        success: true,
+        message: 'Article already has a summary. Set regenerate=true to create a new one.',
+        data: {
+          article: {
+            _id: article._id,
+            title: article.title,
+            summary: article.summary,
+            alreadyExists: true
+          }
+        }
+      });
+    }
+
+    // Check if user is authorized (owner or admin)
+    const isOwner = article.createdBy.toString() === req.user._id.toString();
+    const isAdmin = req.user.role === 'admin';
+
+    if (!isOwner && !isAdmin) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to summarize this article. Only the owner or admin can generate summaries.'
+      });
+    }
+
+    // Validate content exists
+    if (!article.content || article.content.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Article content is empty. Cannot generate summary.'
+      });
+    }
+
+    // Determine which LLM provider to use
+    const llmProvider = provider || process.env.DEFAULT_LLM_PROVIDER || 'gemini';
+
+    // Check if provider is available
+    if (!llmService.isProviderAvailable(llmProvider)) {
+      return res.status(400).json({
+        success: false,
+        message: `LLM provider '${llmProvider}' is not configured. Available providers: ${JSON.stringify(llmService.getAvailableProviders())}`
+      });
+    }
+
+    // Generate summary using LLM
+    console.log(`Generating summary for article ${articleId} using ${llmProvider}...`);
+    const startTime = Date.now();
+    
+    const generatedSummary = await llmService.summarizeWithLLM(
+      article.content,
+      llmProvider,
+      { maxLength: 150 }
+    );
+
+    const duration = Date.now() - startTime;
+    console.log(`Summary generated in ${duration}ms using ${llmProvider}`);
+
+    // Update article with generated summary
+    article.summary = generatedSummary;
+    await article.save();
+    await article.populate('createdBy', 'username email role');
+
+    res.status(200).json({
+      success: true,
+      message: `Summary generated successfully using ${llmProvider}.`,
+      data: {
+        article: {
+          _id: article._id,
+          title: article.title,
+          summary: article.summary,
+          content: article.content,
+          tags: article.tags,
+          createdBy: article.createdBy,
+          createdAt: article.createdAt,
+          updatedAt: article.updatedAt
+        },
+        metadata: {
+          provider: llmProvider,
+          generationTime: `${duration}ms`,
+          regenerated: !!regenerate
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Summarize article error:', error);
+
+    // Handle specific LLM errors
+    if (error.message.includes('API key')) {
+      return res.status(500).json({
+        success: false,
+        message: 'LLM service configuration error. Please contact administrator.',
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    }
+
+    if (error.kind === 'ObjectId') {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid article ID.'
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: 'Error generating summary.',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
 module.exports = {
   createArticle,
   getAllArticles,
   getArticleById,
   updateArticle,
   deleteArticle,
-  getMyArticles
+  getMyArticles,
+  summarizeArticle
 };

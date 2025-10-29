@@ -403,6 +403,120 @@
             }
           },
           "response": []
+        },
+        {
+          "name": "Summarize Article (Gemini)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{jwt_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"provider\": \"gemini\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/articles/:id/summarize",
+              "host": ["{{base_url}}"],
+              "path": ["articles", ":id", "summarize"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{article_id}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Summarize Article (OpenAI)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{jwt_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"provider\": \"openai\",\n  \"regenerate\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/articles/:id/summarize",
+              "host": ["{{base_url}}"],
+              "path": ["articles", ":id", "summarize"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{article_id}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Summarize Article (Default Provider)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{jwt_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": ""
+            },
+            "url": {
+              "raw": "{{base_url}}/articles/:id/summarize",
+              "host": ["{{base_url}}"],
+              "path": ["articles", ":id", "summarize"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{article_id}}"
+                }
+              ]
+            }
+          },
+          "response": []
         }
       ]
     },

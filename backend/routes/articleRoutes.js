@@ -6,7 +6,8 @@ const {
   getArticleById,
   updateArticle,
   deleteArticle,
-  getMyArticles
+  getMyArticles,
+  summarizeArticle
 } = require('../controllers/articleController');
 const { authenticate, isAdmin } = require('../middleware/auth');
 
@@ -17,6 +18,7 @@ router.get('/:id', getArticleById);
 // Protected routes (require authentication)
 router.post('/', authenticate, createArticle);
 router.put('/:id', authenticate, updateArticle); // Owner or admin can update
+router.post('/:id/summarize', authenticate, summarizeArticle); // Owner or admin can summarize
 router.get('/my/articles', authenticate, getMyArticles);
 
 // Admin only routes
