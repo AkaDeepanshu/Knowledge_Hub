@@ -1,9 +1,9 @@
 const OpenAI = require('openai');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { GoogleGenAI } = require('@google/genai');
 
 /**
  * Abstract LLM Service - Supports multiple AI providers
- * Providers: OpenAI (GPT-3.5/GPT-4) and Google Gemini Pro
+ * Providers: OpenAI (GPT-3.5/GPT-4) and Google Gemini
  */
 
 class LLMService {
@@ -13,9 +13,9 @@ class LLMService {
       ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
       : null;
 
-    // Initialize Gemini
+    // Initialize Gemini with correct package
     this.gemini = process.env.GEMINI_API_KEY
-      ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
+      ? new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY })
       : null;
 
     // Default provider
@@ -90,12 +90,17 @@ class LLMService {
 
     const summary = response.choices[0].message.content.trim();
     
+    // Validate summary is not empty
+    if (!summary || summary.length === 0) {
+      throw new Error('OpenAI returned an empty summary');
+    }
+    
     // Validate summary length (max 500 chars as per schema)
     return summary.length > 500 ? summary.substring(0, 497) + '...' : summary;
   }
 
   /**
-   * Generate summary using Google Gemini Pro
+   * Generate summary using Google Gemini
    * @private
    */
   async summarizeWithGemini(content, options = {}) {
@@ -105,27 +110,55 @@ class LLMService {
 
     const {
       maxLength = 150,
-      model = 'gemini-pro',
+      model = 'gemini-2.0-flash-exp',
       temperature = 0.7
     } = options;
 
-    const genModel = this.gemini.getGenerativeModel({ model: model });
+    // Create the prompt - Gemini will take article content and provide summary
+    const prompt = `You are a professional content summarizer. Create a concise, informative summary of approximately ${maxLength} words that captures the key points and main ideas of the following article. Make it clear and engaging.
 
-    const prompt = `You are a professional content summarizer. Create a concise, informative summary of approximately ${maxLength} words that captures the key points and main ideas of the following article. Make it clear and engaging.\n\nArticle:\n${content}\n\nSummary:`;
+Article Content:
+${content}
 
-    const result = await genModel.generateContent({
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: temperature,
-        maxOutputTokens: Math.ceil(maxLength * 1.5),
-      },
-    });
+Please provide only the summary without any additional text:`;
 
-    const response = await result.response;
-    const summary = response.text().trim();
+    console.log('📝 Sending content to Gemini for summarization...');
+    console.log('📄 Content length:', content.length, 'characters');
+    console.log('🤖 Model:', model);
 
-    // Validate summary length (max 500 chars as per schema)
-    return summary.length > 500 ? summary.substring(0, 497) + '...' : summary;
+    try {
+      // Generate summary using Gemini
+      const result = await this.gemini.models.generateContent({
+        model: model,
+        contents: prompt,
+        config: {
+          temperature: temperature,
+          maxOutputTokens: Math.ceil(maxLength * 2),
+        }
+      });
+
+      console.log('✅ Gemini API Response received');
+      
+      // Extract text from response
+      const summary = result.text?.trim() || '';
+      
+      console.log('📊 Summary length:', summary.length, 'characters');
+
+      // Validate summary is not empty
+      if (!summary || summary.length === 0) {
+        throw new Error('Gemini returned an empty summary');
+      }
+
+      // Validate summary length (max 500 chars as per schema)
+      const finalSummary = summary.length > 500 ? summary.substring(0, 497) + '...' : summary;
+      
+      console.log('✨ Summary generated successfully');
+      
+      return finalSummary;
+    } catch (error) {
+      console.error('❌ Gemini API Error:', error.message);
+      throw error;
+    }
   }
 
   /**

@@ -1,4 +1,5 @@
 const Article = require('../models/Article');
+const ArticleVersion = require('../models/ArticleVersion');
 const llmService = require('../services/llmService');
 
 // Create article
@@ -7,19 +8,19 @@ const createArticle = async (req, res) => {
     const { title, content, tags, summary } = req.body;
 
     // Validate required fields
-    if (!title || !content || !summary) {
+    if (!title || !content) {
       return res.status(400).json({
         success: false,
-        message: 'Please provide title, content, and summary.'
+        message: 'Please provide title and content.'
       });
     }
 
-    // Create article
+    // Create article (summary is optional)
     const article = new Article({
       title,
       content,
       tags: tags || [],
-      summary,
+      summary: summary || '', // Summary is optional, can be empty
       createdBy: req.user._id
     });
 
@@ -163,6 +164,20 @@ const updateArticle = async (req, res) => {
       });
     }
 
+    // Save the current version before updating
+    const versionSnapshot = new ArticleVersion({
+      articleId: article._id,
+      versionNumber: article.version || 1,
+      title: article.title,
+      content: article.content,
+      summary: article.summary,
+      tags: article.tags,
+      editedBy: req.user._id,
+      editReason: req.body.editReason || 'Article updated'
+    });
+    
+    await versionSnapshot.save();
+
     // Update fields
     const { title, content, tags, summary } = req.body;
     
@@ -170,6 +185,9 @@ const updateArticle = async (req, res) => {
     if (content !== undefined) article.content = content;
     if (tags !== undefined) article.tags = tags;
     if (summary !== undefined) article.summary = summary;
+    
+    // Increment version number
+    article.version = (article.version || 1) + 1;
 
     await article.save();
     await article.populate('createdBy', 'username email role');
@@ -178,7 +196,8 @@ const updateArticle = async (req, res) => {
       success: true,
       message: 'Article updated successfully.',
       data: {
-        article
+        article,
+        versionSaved: versionSnapshot.versionNumber
       }
     });
   } catch (error) {
@@ -343,8 +362,17 @@ const summarizeArticle = async (req, res) => {
     const duration = Date.now() - startTime;
     console.log(`Summary generated in ${duration}ms using ${llmProvider}`);
 
+    // Validate generated summary
+    if (!generatedSummary || generatedSummary.trim().length === 0) {
+      throw new Error('LLM returned an empty summary');
+    }
+
+    if (generatedSummary.trim().length < 20) {
+      throw new Error('Generated summary is too short (minimum 20 characters)');
+    }
+
     // Update article with generated summary
-    article.summary = generatedSummary;
+    article.summary = generatedSummary.trim();
     await article.save();
     await article.populate('createdBy', 'username email role');
 
@@ -396,6 +424,83 @@ const summarizeArticle = async (req, res) => {
   }
 };
 
+// Get version history for an article
+const getArticleVersions = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Check if article exists
+    const article = await Article.findById(id);
+    if (!article) {
+      return res.status(404).json({
+        success: false,
+        message: 'Article not found.'
+      });
+    }
+
+    // Get all versions for this article
+    const versions = await ArticleVersion.find({ articleId: id })
+      .populate('editedBy', 'username email')
+      .sort({ versionNumber: -1 });
+
+    res.status(200).json({
+      success: true,
+      count: versions.length,
+      currentVersion: article.version,
+      data: {
+        versions
+      }
+    });
+  } catch (error) {
+    console.error('Get article versions error:', error);
+    
+    if (error.kind === 'ObjectId') {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid article ID.'
+      });
+    }
+    
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching article versions.'
+    });
+  }
+};
+
+// Get a specific version of an article
+const getArticleVersion = async (req, res) => {
+  try {
+    const { id, versionNumber } = req.params;
+    
+    const version = await ArticleVersion.findOne({
+      articleId: id,
+      versionNumber: parseInt(versionNumber)
+    }).populate('editedBy', 'username email');
+
+    if (!version) {
+      return res.status(404).json({
+        success: false,
+        message: 'Version not found.'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        version
+      }
+    });
+  } catch (error) {
+    console.error('Get article version error:', error);
+    
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching article version.'
+    });
+  }
+};
+
 module.exports = {
   createArticle,
   getAllArticles,
@@ -403,5 +508,7 @@ module.exports = {
   updateArticle,
   deleteArticle,
   getMyArticles,
-  summarizeArticle
+  summarizeArticle,
+  getArticleVersions,
+  getArticleVersion
 };
