@@ -1,16 +1,26 @@
-name: Build and Push Docker Image
+name: Build and Push Docker Images to Docker Hub
 
 on:
   push:
     branches:
       - main
+  workflow_dispatch: # Allow manual trigger
+
+env:
+  DOCKER_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+  BACKEND_IMAGE: akadeepanshu12345/backend
+  FRONTEND_IMAGE: akadeepanshu12345/frontend
 
 jobs:
-  build:
+  build-and-push:
     runs-on: ubuntu-latest
+    
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
@@ -18,16 +28,61 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and push backend image
+      - name: Extract metadata for Backend
+        id: backend-meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.BACKEND_IMAGE }}
+          tags: |
+            type=raw,value=latest
+            type=sha,prefix={{branch}}-
+            type=ref,event=branch
+
+      - name: Build and push Backend image
         uses: docker/build-push-action@v5
         with:
           context: ./backend
+          file: ./backend/Dockerfile
           push: true
-          tags: akadeepanshu12345/backend:latest
+          tags: ${{ steps.backend-meta.outputs.tags }}
+          labels: ${{ steps.backend-meta.outputs.labels }}
+          cache-from: type=registry,ref=${{ env.BACKEND_IMAGE }}:buildcache
+          cache-to: type=registry,ref=${{ env.BACKEND_IMAGE }}:buildcache,mode=max
+          platforms: linux/amd64
 
-      - name: Build and push frontend image
+      - name: Extract metadata for Frontend
+        id: frontend-meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.FRONTEND_IMAGE }}
+          tags: |
+            type=raw,value=latest
+            type=sha,prefix={{branch}}-
+            type=ref,event=branch
+
+      - name: Build and push Frontend image
         uses: docker/build-push-action@v5
         with:
           context: ./frontend
+          file: ./frontend/Dockerfile
           push: true
-          tags: akadeepanshu12345/frontend:latest
+          tags: ${{ steps.frontend-meta.outputs.tags }}
+          labels: ${{ steps.frontend-meta.outputs.labels }}
+          cache-from: type=registry,ref=${{ env.FRONTEND_IMAGE }}:buildcache
+          cache-to: type=registry,ref=${{ env.FRONTEND_IMAGE }}:buildcache,mode=max
+          platforms: linux/amd64
+
+      - name: Trigger Render Deploy (Backend)
+        if: success()
+        run: |
+          curl -X POST "${{ secrets.RENDER_BACKEND_DEPLOY_HOOK }}" || echo "No backend deploy hook configured"
+
+      - name: Trigger Render Deploy (Frontend)
+        if: success()
+        run: |
+          curl -X POST "${{ secrets.RENDER_FRONTEND_DEPLOY_HOOK }}" || echo "No frontend deploy hook configured"
+
+      - name: Image digest
+        run: |
+          echo "Backend: ${{ steps.backend-meta.outputs.tags }}"
+          echo "Frontend: ${{ steps.frontend-meta.outputs.tags }}"
